@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI Pipeline — DevSecOps
 
 on:
   push:
@@ -7,20 +7,94 @@ on:
     branches: [main]
 
 jobs:
-  # ────────────────────────────────────────────────
-  # Phase 1 : Build de l'image Docker
-  # ────────────────────────────────────────────────
-  build:
-    name: Build Docker Image
+
+  # ══════════════════════════════════════════════════════════════
+  # PHASE 2 — Job 1 : SAST
+  # Analyse statique du code Python (règles OWASP + sécurité Python)
+  # Bloque sur les vulnérabilités de sévérité ERROR (injection, RCE…)
+  # ══════════════════════════════════════════════════════════════
+  sast:
+    name: SAST — Semgrep
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Run Semgrep SAST
+        # --severity ERROR : ne remonte que les vulnérabilités critiques
+        # --error          : exit 1 si au moins un finding est trouvé
+        run: |
+          semgrep scan \
+            --config p/python \
+            --config p/owasp-top-ten \
+            --severity ERROR \
+            --error \
+            app/
+
+  # ══════════════════════════════════════════════════════════════
+  # PHASE 2 — Job 2 : Détection de secrets
+  # Gitleaks scanne tout l'historique git à la recherche de secrets
+  # Cible : SECRET_KEY hardcodée dans app/auth.py (ligne ~13)
+  # ══════════════════════════════════════════════════════════════
+  secret-scan:
+    name: Secret Scanning — Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # historique complet — scanne tous les commits
+
+      - name: Install Gitleaks
+        run: |
+          curl -sSfL \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz \
+            | tar -xz -C /usr/local/bin gitleaks
+
+      - name: Run Gitleaks
+        # exit 1 automatiquement si un secret est détecté
+        # --redact : masque la valeur réelle du secret dans les logs CI
+        run: gitleaks detect --source . --verbose --redact
+
+  # ══════════════════════════════════════════════════════════════
+  # PHASE 2 — Job 3 : Audit des dépendances
+  # pip-audit compare requirements.txt contre les bases OSV / PyPI Advisory
+  # Cible : CVE-2023-32681 dans requests==2.28.1
+  # ══════════════════════════════════════════════════════════════
+  dependency-audit:
+    name: Dependency Audit — pip-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit requirements.txt
+        # exit 1 par défaut si une CVE est trouvée (toute sévérité)
+        # --desc : affiche la description de chaque vulnérabilité
+        run: pip-audit -r requirements.txt --desc
+
+  # ══════════════════════════════════════════════════════════════
+  # PHASE 1 — Build Docker
+  # Ne se déclenche QUE si les 3 jobs de sécurité passent
+  # ══════════════════════════════════════════════════════════════
+  build:
+    name: Build — Docker Image
+    runs-on: ubuntu-latest
+    needs: [sast, secret-scan, dependency-audit]
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build image
+      - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -29,31 +103,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ────────────────────────────────────────────────
-  # Phase 2 : SAST + scan de secrets  (à venir)
-  # ────────────────────────────────────────────────
-  # sast:
-  #   name: SAST & Secret Scanning
-  #   needs: build
-  #   steps:
-  #     - uses: gitleaks/gitleaks-action@v2       # détecte SECRET_KEY hardcodé
-  #     - run: pip install bandit && bandit -r app  # analyse statique Python
-
-  # ────────────────────────────────────────────────
-  # Phase 3 : Scan CVE / SCA  (à venir)
-  # ────────────────────────────────────────────────
-  # sca:
-  #   name: CVE & Dependency Scan
-  #   needs: build
-  #   steps:
-  #     - uses: aquasecurity/trivy-action@master   # détecte requests==2.18.0
-  #     - run: pip install pip-audit && pip-audit
-
-  # ────────────────────────────────────────────────
-  # Phase 4 : Déploiement Kubernetes  (à venir)
-  # ────────────────────────────────────────────────
-  # deploy:
-  #   name: Deploy to K8s
-  #   needs: [sast, sca]
-  #   steps:
-  #     - run: kubectl apply -f k8s/
+      # ──────────────────────────────────────────
+      # Phase 3 : Scan CVE image Docker (Trivy)  — à venir
+      # Phase 4 : Déploiement Kubernetes          — à venir
+      # ──────────────────────────────────────────
