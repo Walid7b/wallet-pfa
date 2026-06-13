@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-config
+  labels:
+    app: wallet-pfa
+data:
+  APP_NAME: "wallet-pfa"
+  ENVIRONMENT: "production"
+  # En production : déplacer DATABASE_URL dans le Secret (contient le mot de passe)
+  DATABASE_URL: "postgresql://wallet_user:wallet_pass@postgres:5432/wallet_db"
+  POSTGRES_USER: "wallet_user"
+  POSTGRES_DB: "wallet_db"

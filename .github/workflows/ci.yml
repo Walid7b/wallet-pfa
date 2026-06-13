@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
 
   # ══════════════════════════════════════════════════════════════
@@ -23,8 +27,6 @@ jobs:
         run: pip install semgrep
 
       - name: Run Semgrep SAST
-        # --severity ERROR : ne remonte que les vulnérabilités critiques
-        # --error          : exit 1 si au moins un finding est trouvé
         run: |
           semgrep scan \
             --config p/python \
@@ -35,8 +37,8 @@ jobs:
 
   # ══════════════════════════════════════════════════════════════
   # PHASE 2 — Job 2 : Détection de secrets
-  # Gitleaks scanne tout l'historique git à la recherche de secrets
-  # Cible : SECRET_KEY hardcodée dans app/auth.py (ligne ~13)
+  # Gitleaks scanne tout l'historique git
+  # Cible : SECRET_KEY hardcodée dans app/auth.py
   # ══════════════════════════════════════════════════════════════
   secret-scan:
     name: Secret Scanning — Gitleaks
@@ -44,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # historique complet — scanne tous les commits
+          fetch-depth: 0
 
       - name: Install Gitleaks
         run: |
@@ -53,13 +55,10 @@ jobs:
             | tar -xz -C /usr/local/bin gitleaks
 
       - name: Run Gitleaks
-        # exit 1 automatiquement si un secret est détecté
-        # --redact : masque la valeur réelle du secret dans les logs CI
         run: gitleaks detect --source . --verbose --redact
 
   # ══════════════════════════════════════════════════════════════
   # PHASE 2 — Job 3 : Audit des dépendances
-  # pip-audit compare requirements.txt contre les bases OSV / PyPI Advisory
   # Cible : CVE-2023-32681 dans requests==2.28.1
   # ══════════════════════════════════════════════════════════════
   dependency-audit:
@@ -76,13 +75,11 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit requirements.txt
-        # exit 1 par défaut si une CVE est trouvée (toute sévérité)
-        # --desc : affiche la description de chaque vulnérabilité
         run: pip-audit -r requirements.txt --desc
 
   # ══════════════════════════════════════════════════════════════
-  # PHASE 1 — Build Docker
-  # Ne se déclenche QUE si les 3 jobs de sécurité passent
+  # PHASE 3 — Job 4 : Build Docker
+  # Construit l'image et la sauvegarde en tarball pour le scan Trivy
   # ══════════════════════════════════════════════════════════════
   build:
     name: Build — Docker Image
@@ -91,19 +88,75 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: false
+          load: true
           tags: wallet-pfa:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ──────────────────────────────────────────
-      # Phase 3 : Scan CVE image Docker (Trivy)  — à venir
-      # Phase 4 : Déploiement Kubernetes          — à venir
-      # ──────────────────────────────────────────
+      - name: Exporter l'image en tarball compressé
+        run: docker save wallet-pfa:${{ github.sha }} | gzip > wallet-pfa.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: wallet-pfa.tar.gz
+          retention-days: 1
+
+  # ══════════════════════════════════════════════════════════════
+  # PHASE 3 — Job 5 : Scan CVE de l'image Docker (Trivy)
+  # Bloque si CVE CRITICAL ou HIGH détectée
+  # Cible : cryptography==38.0.4 → CVE-2023-0286 (HIGH, CVSS 7.4)
+  # ══════════════════════════════════════════════════════════════
+  image-scan:
+    name: Image Scan — Trivy
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Scan image avec Trivy (bloquant)
+        # exit-code 1 → bloque le pipeline si CVE CRITICAL ou HIGH trouvée
+        # ignore-unfixed → ignore les CVE sans correctif disponible (réduit le bruit)
+        # vuln-type os,library → scanne les paquets OS ET les libs Python
+        uses: aquasecurity/trivy-action@master
+        with:
+          input: wallet-pfa.tar.gz
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      - name: Exporter rapport Trivy JSON
+        if: always()
+        uses: aquasecurity/trivy-action@master
+        with:
+          input: wallet-pfa.tar.gz
+          format: json
+          output: trivy-report.json
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      - name: Upload rapport Trivy
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-report.json
+          retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════
+  # PHASE 4 : Déploiement Kubernetes — à venir
+  # ══════════════════════════════════════════════════════════════

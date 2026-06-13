@@ -10,7 +10,11 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 
 # VULNÉRABLE EXPRÈS - démo DevSecOps
-# CVE-2023-32681 : requests 2.28.1 forward le header Proxy-Authorization
-# vers la destination finale lors d'une redirection (proxy credential leak).
-# Sera détecté par Trivy / pip-audit en Phase 3.
+# CVE-2023-32681 : requests 2.28.1 — proxy credential leak (MEDIUM)
+# Détecté par pip-audit (Phase 2)
 requests==2.28.1
+
+# VULNÉRABLE EXPRÈS - démo DevSecOps
+# CVE-2023-0286 : cryptography 38.0.4 — OpenSSL X.509 GeneralName type confusion (HIGH, CVSS 7.4)
+# Détecté par Trivy lors du scan de l'image Docker (Phase 3)
+cryptography==38.0.4

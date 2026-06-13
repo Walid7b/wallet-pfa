@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wallet-pfa
+  labels:
+    app: wallet-pfa
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wallet-pfa
+  template:
+    metadata:
+      labels:
+        app: wallet-pfa
+    spec:
+      containers:
+        - name: wallet-pfa
+          # Phase 4 : remplacer par l'image publiée sur un registry (ex: ghcr.io)
+          image: wallet-pfa:latest
+          imagePullPolicy: Never   # utilise l'image locale dans minikube
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-config
+                  key: DATABASE_URL
+            # Phase 4 : activer pour remplacer la SECRET_KEY hardcodée dans auth.py
+            # - name: SECRET_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: wallet-secret
+            #       key: SECRET_KEY
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000          # force l'UID 1000 même si le Dockerfile est en root
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp        # volume inscriptible pour les fichiers temporaires Python
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: tmp
+          emptyDir: {}
