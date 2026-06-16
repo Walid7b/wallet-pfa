@@ -112,8 +112,8 @@ jobs:
 
   # ══════════════════════════════════════════════════════════════
   # PHASE 3 — Job 5 : Scan CVE de l'image Docker (Trivy)
-  # Bloque si CVE CRITICAL ou HIGH détectée
-  # Cible : cryptography==38.0.4 → CVE-2023-0286 (HIGH, CVSS 7.4)
+  # Bloque si CVE MEDIUM, HIGH ou CRITICAL détectée
+  # Cible : requests==2.28.1 → CVE-2023-32681 (MEDIUM, CVSS 6.1)
   # ══════════════════════════════════════════════════════════════
   image-scan:
     name: Image Scan — Trivy
@@ -126,7 +126,7 @@ jobs:
           name: docker-image
 
       - name: Scan image avec Trivy (bloquant)
-        # exit-code 1 → bloque le pipeline si CVE CRITICAL ou HIGH trouvée
+        # exit-code 1 → bloque le pipeline si CVE MEDIUM/HIGH/CRITICAL trouvée
         # ignore-unfixed → ignore les CVE sans correctif disponible (réduit le bruit)
         # vuln-type os,library → scanne les paquets OS ET les libs Python
         uses: aquasecurity/trivy-action@master
@@ -134,7 +134,7 @@ jobs:
           input: wallet-pfa.tar.gz
           format: table
           exit-code: '1'
-          severity: CRITICAL,HIGH
+          severity: MEDIUM,HIGH,CRITICAL
           ignore-unfixed: true
           vuln-type: os,library
 
@@ -145,7 +145,7 @@ jobs:
           input: wallet-pfa.tar.gz
           format: json
           output: trivy-report.json
-          severity: CRITICAL,HIGH
+          severity: MEDIUM,HIGH,CRITICAL
           ignore-unfixed: true
           vuln-type: os,library
 
