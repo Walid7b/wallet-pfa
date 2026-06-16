@@ -145,7 +145,7 @@ docker compose down -v       # supprime aussi les volumes (reset complet)
 
 | # | Fichier | Vulnérabilité | Détectée par | Statut |
 |---|---------|----------------|--------------|--------|
-| 1 | `app/auth.py` | `SECRET_KEY` hardcodée en clair | **Gitleaks** (Phase 2) | ⚠️ Toujours présente (démo volontaire) |
+| 1 | `app/auth.py:13,36` | `SECRET_KEY` hardcodée, utilisée dans `jwt.encode()` | **Gitleaks** (pattern du secret) + **Semgrep** (règle `python.jwt.security.jwt-hardcode.jwt-python-hardcoded-secret`, CWE-522) — Phase 2 | ⚠️ Toujours présente (démo volontaire) |
 | 2 | `requirements.txt` | `requests==2.28.1` → CVE-2023-32681 (MEDIUM) | **pip-audit** (Phase 2) + **Trivy** (Phase 3) | ⚠️ Toujours présente (démo volontaire) |
 | 3 | `Dockerfile` | Conteneur tournait en **root** | **Hadolint** (Phase 4) | ✅ **Corrigée** — `USER appuser` (UID 1000) |
 
@@ -159,12 +159,15 @@ le Dockerfile reste durci à chaque commit.
 
 ```
 lint-dockerfile     ✅ pass   — Dockerfile durci (non-root, slim, healthcheck)
-sast                ✅ pass   — pas de vulnérabilité ERROR dans le code applicatif
-secret-scan         ❌ FAIL   — SECRET_KEY hardcodée détectée dans app/auth.py
+sast                ❌ FAIL   — Semgrep détecte SECRET_KEY hardcodée dans
+                                jwt.encode() (app/auth.py:36), règle
+                                python.jwt.security.jwt-hardcode.jwt-python-
+                                hardcoded-secret (CWE-522, blocking)
+secret-scan         ❌ FAIL   — Gitleaks détecte SECRET_KEY hardcodée dans app/auth.py
 dependency-audit    ❌ FAIL   — CVE-2023-32681 détectée dans requests==2.28.1
         │
         ▼ (needs: les 4 jobs ci-dessus)
-build               ⏭️ SKIPPED — bloqué par secret-scan / dependency-audit
+build               ⏭️ SKIPPED — bloqué par sast / secret-scan / dependency-audit
         │
         ▼ (needs: build)
 image-scan          ⏭️ SKIPPED — bloqué car build ne s'exécute pas
