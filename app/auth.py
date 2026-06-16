@@ -15,7 +15,7 @@ from . import models
 # En production : charger depuis os.getenv("SECRET_KEY") uniquement.
 SECRET_KEY = "wallet-pfa-super-secret-jwt-key-2024-devsecops-hardcoded"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8h — confort de test
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
