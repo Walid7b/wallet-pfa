@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from .database import engine, Base
 from .routers import auth_router, wallet_router
@@ -20,6 +21,9 @@ app = FastAPI(
 
 app.include_router(auth_router.router)
 app.include_router(wallet_router.router)
+
+# Expose /metrics au format Prometheus (Phase 4 — monitoring)
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
 @app.get("/health", tags=["ops"])

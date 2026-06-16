@@ -8,6 +8,7 @@ bcrypt==4.0.1
 python-multipart==0.0.5
 pydantic==2.5.0
 pydantic-settings==2.1.0
+prometheus-fastapi-instrumentator==6.1.0
 
 # VULNÉRABLE EXPRÈS - démo DevSecOps
 # CVE-2023-32681 : requests 2.28.1 — proxy credential leak (MEDIUM)

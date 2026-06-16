@@ -1,0 +1,3 @@
+# Configuration Hadolint — Phase 4
+# Seuil de blocage : warning (ignore les remarques de style "info")
+failure-threshold: warning

@@ -1,0 +1,77 @@
+# Phase 4 (bonus) — Politiques Kyverno
+# Prérequis : Kyverno installé sur le cluster
+#   helm repo add kyverno https://kyverno.github.io/kyverno/
+#   helm install kyverno kyverno/kyverno -n kyverno --create-namespace
+# Puis : kubectl apply -f k8s/kyverno-policy.yaml
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-root-containers
+  annotations:
+    policies.kyverno.io/title: Disallow Root Containers
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Refuse tout Pod qui ne déclare pas explicitement
+      securityContext.runAsNonRoot=true (au niveau Pod ou conteneur).
+      Corrige la vulnérabilité root de la Phase 1 au niveau du cluster.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Les conteneurs doivent définir runAsNonRoot: true dans leur securityContext."
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+          - spec:
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-unsigned-images
+  annotations:
+    policies.kyverno.io/title: Require Signed Images
+    policies.kyverno.io/category: Software Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Refuse les images dont la signature cosign ne peut pas être vérifiée.
+      ATTENTION (bonus / template) : remplacer la clé publique ci-dessous par
+      celle générée avec `cosign generate-key-pair`, et signer l'image avec
+      `cosign sign --key cosign.key <registry>/wallet-pfa:<tag>` avant de
+      déployer — sinon cette policy bloquera tous les déploiements.
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: check-image-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "*"
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    # REMPLACER par votre clé publique cosign
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      REMPLACER_PAR_VOTRE_CLE_PUBLIQUE_COSIGN
+                      -----END PUBLIC KEY-----
